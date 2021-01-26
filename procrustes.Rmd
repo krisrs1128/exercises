@@ -1,0 +1,88 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("knitr")
+library("MASS")
+opts_chunk$set(message = FALSE, cache = TRUE)
+```
+
+First generate some data.
+
+```{r}
+M <- 10
+x_list <- generate_data(M)
+for (m in seq_len(M)) {
+  plot(x_list[[m]], col = m, asp = 1)
+}
+```
+
+Then run procrustes.
+
+```{r}
+result <- procrustes(x_list)
+plot(result$x_align[,, m], asp = 1)
+for (m in seq_len(M)) {
+  points(result$x_align[,, m], col = m)
+}
+
+plot(result$M, asp = 1)
+```
+This is the procrustes code.
+
+```{r}
+procrustes <- function(x_list, tol = 1e-3) {
+  x_align <- array(dim = c(dim(x_list[[1]]), length(x_list)))
+  M <- x_list[[1]]
+
+  while (TRUE) {
+    # solve each problem
+    for (i in seq_along(x_list)) {
+      svd_i <- svd(t(x_list[[i]]) %*% M)
+      beta <- sum(svd_i$d) / sum(x_list[[i]] ^ 2)
+      x_align[,, i] <- beta * x_list[[i]] %*% svd_i$u %*% t(svd_i$v)
+    }
+
+    # new procrustes mean
+    M_old <- M
+    M <- apply(x_align, c(1, 2), mean)
+    coord_change <- mean(abs(M - M_old))
+    if (coord_change < tol) break
+  }
+
+  list(x_align = x_align, M = M)
+}
+```
+
+This is the code to generate the data.
+
+```{r}
+smiley_face <- function() {
+  x <- list(
+    mvrnorm(20, c(-.6, .4), .01 * diag(2)),
+    mvrnorm(20, c(.6, .5), .01 * diag(2)),
+    mvrnorm(100, c(0, 0), diag(2)),
+    rnorm(100, 0, 0.4)
+  )
+  
+  x[[3]] <- t(apply(x[[3]], 1, function(z) 2 * z / sqrt(sum(z ** 2))))
+  x[[4]] <- cbind(x[[4]], -cos(x[[4]]))
+  
+  x[[3]] <- x[[3]] + mvrnorm(100, c(0, 0), 0.01 * diag(2))
+  x[[4]] <- x[[4]] + mvrnorm(100, c(0, 0), 0.005 * diag(2))
+  do.call(rbind, x)
+}
+
+generate_data <- function(M = 10) {
+  x <- smiley_face()
+  x_list <- vector(length = M, mode = "list")
+  for (m in seq_len(M)) {
+    rotation <- qr.Q(qr(matrix(rnorm(4), 2, 2)))
+    x_list[[m]] <- x %*% rotation + mvrnorm(nrow(x), c(0, 0), 0.001 * diag(2))
+  }
+  
+  x_list
+}
+```
